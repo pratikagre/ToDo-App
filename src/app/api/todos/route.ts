@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { MongoClient } from "mongodb";
-import { TodoItem, TodoPriority } from "@/types/todo";
 
-// MongoDB Configuration
-const uri = process.env.MONGO_DB_URI || "";
+if (!process.env.MONGODB_URI) {
+  throw new Error("MONGODB_URI IS NOT DEFINED");
+}
+
+const uri = process.env.MONGODB_URI as string;
+
+
 const client = new MongoClient(uri);
 const dbName = "todo-nextjs-app";
 const collectionName = "users";

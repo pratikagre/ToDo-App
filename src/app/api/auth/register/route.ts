@@ -6,7 +6,8 @@ interface User {
   password: string;
 }
 
-const uri = process.env.MONGO_DB_URI;
+const uri = process.env.MONGODB_URI || "";
+
 
 if (!uri) {
   throw new Error("Please define the MONGO_DB_URI environment variable");

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { MongoClient } from "mongodb";
 
 // MongoDB configuration
-const uri = process.env.MONGO_DB_URI || "";
+const uri = process.env.MONGODB_URI || "";
+
 const client = new MongoClient(uri);
 const dbName = "todo-nextjs-app";
 const collectionName = "users";
