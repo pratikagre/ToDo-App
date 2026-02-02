@@ -1,24 +1,39 @@
 import { NextResponse } from "next/server";
 import { MongoClient } from "mongodb";
 
+/* ---------------- TYPES ---------------- */
+
+type TodoItem = {
+  id: number;
+  userId: string;
+  task: string;
+  category?: string;
+  completed: boolean;
+  priority?: string;
+  dueDate?: string;
+  notes?: string;
+  createdAt: number;
+};
+
+interface UserDocument {
+  userId: string;
+  todos: TodoItem[];
+}
+
+/* ---------------- MONGO SETUP ---------------- */
+
 if (!process.env.MONGODB_URI) {
   throw new Error("MONGODB_URI IS NOT DEFINED");
 }
 
 const uri = process.env.MONGODB_URI as string;
 
-
 const client = new MongoClient(uri);
 const dbName = "todo-nextjs-app";
 const collectionName = "users";
 
-// Interfaces for type safety
-interface UserDocument {
-  userId: string;
-  todos: TodoItem[];
-}
+/* ---------------- POST ---------------- */
 
-// POST: Add a new todo
 export async function POST(request: Request) {
   const { userId, task, category, completed, priority, dueDate, notes } =
     await request.json();
@@ -26,12 +41,11 @@ export async function POST(request: Request) {
   if (!userId || !task) {
     return NextResponse.json(
       { error: "User ID and task are required" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
   try {
-    // Connect to the database
     await client.connect();
     const db = client.db(dbName);
     const usersCollection = db.collection<UserDocument>(collectionName);
@@ -42,33 +56,30 @@ export async function POST(request: Request) {
       task,
       category,
       completed: Boolean(completed),
-      priority: (priority as TodoPriority) || "medium",
+      priority: priority || "medium",
       dueDate: dueDate || "",
       notes: notes || "",
       createdAt: Date.now(),
     };
 
-    // Explicitly structure $push
     const updateResult = await usersCollection.updateOne(
       { userId },
       { $push: { todos: newTodo } },
-      { upsert: true },
+      { upsert: true }
     );
 
     return NextResponse.json(
       { message: "Todo added successfully", result: updateResult },
-      { status: 201 },
+      { status: 201 }
     );
   } catch (error) {
     console.error("Error adding todo:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// GET: Fetch todos for a user
+/* ---------------- GET ---------------- */
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get("userId");
@@ -84,32 +95,22 @@ export async function GET(request: Request) {
 
     const user = await usersCollection.findOne({ userId });
 
-    const todosWithDefaults: TodoItem[] = (user?.todos || []).map((todo) => ({
-      ...todo,
-      priority: todo.priority || "medium",
-      dueDate: todo.dueDate || "",
-      notes: todo.notes || "",
-      createdAt: todo.createdAt || todo.id || Date.now(),
-    }));
-
-    return NextResponse.json(todosWithDefaults, { status: 200 });
+    return NextResponse.json(user?.todos || [], { status: 200 });
   } catch (error) {
     console.error("Error fetching todos:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// PATCH: Update the completion status of a todo
+/* ---------------- PATCH ---------------- */
+
 export async function PATCH(request: Request) {
   const { userId, todoId, completed } = await request.json();
 
   if (!userId || !todoId) {
     return NextResponse.json(
       { error: "User ID and Todo ID are required" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -121,97 +122,59 @@ export async function PATCH(request: Request) {
     const normalizedTodoId =
       typeof todoId === "string" ? parseInt(todoId, 10) : todoId;
 
-    const updateResult = await usersCollection.updateOne(
+    await usersCollection.updateOne(
       { userId, "todos.id": normalizedTodoId },
-      { $set: { "todos.$.completed": completed } },
+      { $set: { "todos.$.completed": completed } }
     );
 
-    return NextResponse.json(
-      { message: "Todo updated successfully", result: updateResult },
-      { status: 200 },
-    );
+    return NextResponse.json({ message: "Todo updated" });
   } catch (error) {
     console.error("Error updating todo:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// PUT: Update core fields for a todo
+/* ---------------- PUT ---------------- */
+
 export async function PUT(request: Request) {
-  const {
-    userId,
-    todoId,
-    task,
-    category,
-    priority,
-    dueDate,
-    notes,
-    completed,
-  } = await request.json();
-
-  if (!userId || !todoId) {
-    return NextResponse.json(
-      { error: "User ID and Todo ID are required" },
-      { status: 400 },
-    );
-  }
-
-  const updateFields: Record<string, unknown> = {};
-
-  if (task !== undefined) updateFields["todos.$.task"] = task;
-  if (category !== undefined) updateFields["todos.$.category"] = category;
-  if (priority !== undefined) updateFields["todos.$.priority"] = priority;
-  if (dueDate !== undefined) updateFields["todos.$.dueDate"] = dueDate;
-  if (notes !== undefined) updateFields["todos.$.notes"] = notes;
-  if (completed !== undefined) updateFields["todos.$.completed"] = completed;
-
-  if (Object.keys(updateFields).length === 0) {
-    return NextResponse.json(
-      { error: "No update fields provided" },
-      { status: 400 },
-    );
-  }
+  const body = await request.json();
 
   try {
     await client.connect();
     const db = client.db(dbName);
     const usersCollection = db.collection<UserDocument>(collectionName);
 
-    const normalizedTodoId =
-      typeof todoId === "string" ? parseInt(todoId, 10) : todoId;
+    const todoId =
+      typeof body.todoId === "string"
+        ? parseInt(body.todoId, 10)
+        : body.todoId;
 
-    const updateResult = await usersCollection.updateOne(
-      { userId, "todos.id": normalizedTodoId },
-      { $set: updateFields },
+    await usersCollection.updateOne(
+      { userId: body.userId, "todos.id": todoId },
+      {
+        $set: {
+          "todos.$.task": body.task,
+          "todos.$.category": body.category,
+          "todos.$.priority": body.priority,
+          "todos.$.dueDate": body.dueDate,
+          "todos.$.notes": body.notes,
+          "todos.$.completed": body.completed,
+        },
+      }
     );
 
-    return NextResponse.json(
-      { message: "Todo updated successfully", result: updateResult },
-      { status: 200 },
-    );
+    return NextResponse.json({ message: "Todo updated" });
   } catch (error) {
     console.error("Error updating todo:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// DELETE: Remove a todo
+/* ---------------- DELETE ---------------- */
+
 export async function DELETE(request: Request) {
   const { userId, todoId } = await request.json();
 
-  if (!userId || !todoId) {
-    return NextResponse.json(
-      { error: "User ID and Todo ID are required" },
-      { status: 400 },
-    );
-  }
-
   try {
     await client.connect();
     const db = client.db(dbName);
@@ -220,20 +183,14 @@ export async function DELETE(request: Request) {
     const normalizedTodoId =
       typeof todoId === "string" ? parseInt(todoId, 10) : todoId;
 
-    const deleteResult = await usersCollection.updateOne(
+    await usersCollection.updateOne(
       { userId },
-      { $pull: { todos: { id: normalizedTodoId } } },
+      { $pull: { todos: { id: normalizedTodoId } } }
     );
 
-    return NextResponse.json(
-      { message: "Todo deleted successfully", result: deleteResult },
-      { status: 200 },
-    );
+    return NextResponse.json({ message: "Todo deleted" });
   } catch (error) {
     console.error("Error deleting todo:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
